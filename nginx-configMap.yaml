@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: privateai
+data:
+  default.conf: |
+    server {
+      listen 80;
+
+      location / {
+        root /usr/share/nginx/html;
+        index index.html;
+      }
+
+      location /api/ {
+        proxy_pass http://ollama-service:11434/api/;
+        proxy_set_header Host "localhost:11434";
+        proxy_read_timeout 300s;
+      }
+    }
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="UTF-8">
+    <title>PrivateAI Chatbot</title>
+    <style>
+      body { font-family: sans-serif; max-width: 700px; margin: 40px auto; background: #f5f5f5; }
+      #chat { background: white; border-radius: 8px; padding: 20px; min-height: 400px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+      .msg { margin: 10px 0; padding: 10px; border-radius: 6px; }
+      .user { background: #dbeafe; text-align: right; }
+      .bot { background: #e5e7eb; }
+      #inputRow { display: flex; margin-top: 15px; }
+      #prompt { flex: 1; padding: 10px; font-size: 14px; }
+      button { padding: 10px 20px; margin-left: 8px; }
+    </style>
+    </head>
+    <body>
+    <h2>PrivateAI Chatbot</h2>
+    <div id="chat"></div>
+    <div id="inputRow">
+      <input id="prompt" placeholder="Ask something..." onkeydown="if(event.key==='Enter') send()">
+      <button onclick="send()">Send</button>
+    </div>
+    <script>
+    async function send() {
+      const input = document.getElementById('prompt');
+      const chat = document.getElementById('chat');
+      const text = input.value.trim();
+      if (!text) return;
+      chat.innerHTML += '<div class="msg user">' + text + '</div>';
+      input.value = '';
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'qwen2.5:0.5b', prompt: text, stream: false })
+      });
+      const data = await res.json();
+      chat.innerHTML += '<div class="msg bot">' + data.response + '</div>';
+      chat.scrollTop = chat.scrollHeight;
+    }
+    </script>
+    </body>
+    </html>

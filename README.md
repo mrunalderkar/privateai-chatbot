@@ -35,10 +35,10 @@ Most AI chatbots send your data to a third-party cloud API. This project runs a 
 - ✅ **PersistentVolumeClaim** for model data persistence
 - ✅ **Liveness & readiness probes** on both pods — Kubernetes actively verifies each app is responding, not just that the process exists
 - ✅ **Continuous monitoring** via a lightweight [VictoriaMetrics](https://victoriametrics.com) + vmagent stack (a resource-efficient alternative to Prometheus), visualized through VictoriaMetrics' built-in `vmui` dashboard — no Grafana required, keeping the footprint small enough for a 2GB-constrained VM
-- 🚧 NetworkPolicy (restricting Nginx→Ollama traffic) — in progress
-- 🚧 HorizontalPodAutoscaler — in progress
-- 🚧 Ingress (clean URL routing) — in progress
-- 🚧 GitHub Actions CI (manifest validation) — planned
+- ✅ **Ingress** (via Traefik, k3d's built-in controller) — chatbot reachable at a clean hostname (`chatbot.local:8080`) instead of raw IP/NodePort
+- ✅ **HorizontalPodAutoscaler** on the Nginx Deployment (1-2 replicas, scales on CPU >50%) — demonstrates working autoscaling; not applied to Ollama, since the dev VM's memory (2GB total) has no headroom to run a second LLM replica
+- ✅ **NetworkPolicy** restricting traffic so only Nginx can reach Ollama — verified by testing from a non-Nginx pod to confirm it's actually enforced, not just applied
+- **CI/CD (GitHub Actions)** was intentionally skipped — this project runs locally for demonstration purposes rather than as a long-running deployment, so an automated pipeline wasn't a priority
 
 ## Monitoring
 
@@ -64,15 +64,42 @@ The development VM has limited RAM (2GB available for the whole stack). k3d runs
    kubectl apply -f nginx-deployment.yaml
    kubectl apply -f nginx-service.yaml
    kubectl apply -f monitoring.yaml
+   kubectl apply -f nginx-ingress.yaml
+   kubectl apply -f nginx-hpa.yaml
    ```
-4. Access the chatbot via the Nginx service, and the monitoring dashboard at `http://<node-ip>:30428/vmui`
+4. Add the VM's IP to your local hosts file mapped to `chatbot.local`, then access the chatbot at `http://chatbot.local:8080`. The monitoring dashboard is available at `http://<node-ip>:30428/vmui`
 
 ## Challenges & Solutions
 
 - **NodePort not reachable from the VM**: k3d runs cluster nodes as Docker containers, so a Kubernetes NodePort is only reachable if that port was explicitly published to Docker. Fixed with `k3d cluster edit privateai --port-add 30428:30428@loadbalancer` rather than recreating the whole cluster.
 - **Resource constraints**: With only 2GB available, a full Prometheus + Grafana stack was too heavy. Switched to VictoriaMetrics (lighter on memory) and dropped Grafana entirely in favor of its built-in `vmui`, saving roughly 150-250Mi of RAM.
 - **YAML indentation errors** when adding probes: caught early using `kubectl apply --dry-run=client` before applying changes to live pods, avoiding downtime from misconfigured manifests.
+- **Ingress not reachable on port 80**: k3d's load balancer only had port `8080` published to the VM (mapped to Traefik's internal port 80), so `http://chatbot.local` timed out until the port was included explicitly (`http://chatbot.local:8080`). Diagnosed by testing with `curl -H "Host: chatbot.local" http://localhost:8080/` directly on the VM before touching the browser.
+
+## Screenshots
+
+- Chatbot running at `chatbot.local:8080`
+- <img width="1910" height="940" alt="Screenshot 2026-08-19 210043" src="https://github.com/user-attachments/assets/9cdebc33-3995-4e40-bacf-2768faf2026c" />
+
+- VictoriaMetrics dashboard showing Ollama's memory spike during inference
+- <img width="1899" height="594" alt="Screenshot 2026-08-19 210755" src="https://github.com/user-attachments/assets/b0603f37-fd39-4293-a170-765482c47b04" />
+<img width="1917" height="826" alt="Screenshot 2026-08-19 210807" src="https://github.com/user-attachments/assets/36929095-8f4a-4733-b0b7-25d76f6919cc" />
+<img width="1898" height="826" alt="Screenshot 2026-08-19 212028" src="https://github.com/user-attachments/assets/d82f4461-82a1-43bd-9ecb-7192c9e516b9" />
+
+- `kubectl get hpa` output showing live autoscaling status
+- <img width="1270" height="367" alt="Screenshot 2026-08-19 212129" src="https://github.com/user-attachments/assets/01e7ef6b-7131-4c10-aeea-733469e0f400" />
+
+
+*(Add images here — drag and drop directly into GitHub's file editor to auto-generate the markdown links.)*
+
+## With More Resources
+
+This project was intentionally built under tight constraints (a 2GB VM) to demonstrate resource-conscious engineering. Given more headroom, natural next steps would be: enabling HPA on Ollama itself, multi-node HA, a GitHub Actions CI pipeline for manifest validation, and TLS via cert-manager on the Ingress.
 
 ## Tech Stack
 
-Kubernetes (k3d/k3s) · Docker · Ollama · Nginx · VictoriaMetrics · vmagent · Ubuntu · VirtualBox
+Kubernetes (k3d/k3s) · Docker · Ollama · Nginx · VictoriaMetrics · vmagent · Traefik · Ubuntu · VirtualBox
+
+---
+
+Built by Mrunal Derkar

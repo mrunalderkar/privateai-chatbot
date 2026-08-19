@@ -27,6 +27,13 @@ spec:
             - name: nginx-conf
               mountPath: /usr/share/nginx/html/index.html
               subPath: index.html
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "64Mi"    
           readinessProbe:
             httpGet:
               path: /

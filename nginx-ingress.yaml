@@ -4,8 +4,10 @@ metadata:
   name: nginx-ingress
   namespace: privateai
 spec:
+  ingressClassName: traefik
   rules:
-    - http:
+    - host: chatbot.local
+      http:
         paths:
           - path: /
             pathType: Prefix
